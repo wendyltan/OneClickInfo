@@ -1,3 +1,5 @@
 # PyInstaller 生成的文件
 .spec
 build/
+.idea
+dist/
