@@ -1,0 +1,4 @@
+psutil>=5.8.0
+pyperclip>=1.8.2
+pywin32>=300
+WMI>=1.5.1
