@@ -1,6 +1,10 @@
 32位打包
 C:\Users\pbc\AppData\Local\Programs\Python\Python37-32\python.exe -m PyInstaller --onefile --windowed --icon=app.ico --add-data "app.ico;." --upx-dir="C:\Users\pbc\Desktop\python project\upx-4.2.4-win64" --clean --exclude-module=matplotlib --exclude-module=numpy --exclude-module=pandas oneclickinfo.py
 
+C:\Users\pbc\AppData\Local\Programs\Python\Python37-32\python.exe -m PyInstaller --onefile --windowed --icon=app.ico --add-data "app.ico;." --upx-dir="C:\Users\pbc\Desktop\python project\upx-4.2.4-win64" --clean  --win-private-assemblies --target-architecture=32bit  oneclickinfo.py
+
+
+
 64位打包
 C:\Users\pbc\AppData\Local\Programs\Python\Python37\python.exe -m PyInstaller --onefile --windowed --icon=app.ico --add-data "app.ico;." --upx-dir="C:\Users\pbc\Desktop\python project\upx-4.2.4-win64" --clean --exclude-module=matplotlib --exclude-module=numpy --exclude-module=pandas oneclickinfo.py
 
