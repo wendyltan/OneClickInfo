@@ -2,12 +2,13 @@ import sys
 import os
 import tkinter as tk
 from tkinter import messagebox
-import psutil
 import socket
 import platform
-import subprocess
 import pyperclip
 import ctypes
+import subprocess
+import psutil
+
 
 def is_admin():
     """检查是否以管理员权限运行"""
@@ -16,11 +17,19 @@ def is_admin():
     except:
         return False
 
+
 def run_as_admin():
     """以管理员权限重新运行脚本"""
     if not is_admin():
-        ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, " ".join(sys.argv), None, 1)
-        sys.exit()
+        # 获取当前脚本的绝对路径
+        script = os.path.abspath(sys.argv[0])
+        # 以管理员权限重新启动程序
+        ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, f'"{script}"', None, 1)
+        sys.exit()  # 直接退出当前进程
+
+# # 在程序启动时检查权限
+# if not is_admin():
+#     run_as_admin()
 
 def run_command_silently(command):
     """运行命令并禁止显示 cmd 窗口"""
@@ -28,6 +37,7 @@ def run_command_silently(command):
     startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
     startupinfo.wShowWindow = subprocess.SW_HIDE
     return subprocess.check_output(command, startupinfo=startupinfo, shell=True)
+
 
 def get_network_info():
     """获取有线网卡的 MAC 地址、IPv4 地址、网关、DNS 和子网掩码信息"""
@@ -83,23 +93,62 @@ def get_system_info():
         '系统版本': platform.platform()
     }
 
-def get_disk_info():
-    """获取分区数量、分区大小和使用情况"""
-    disk_info = []
-    for partition in psutil.disk_partitions():
-        try:
-            usage = psutil.disk_usage(partition.mountpoint)
-            disk_info.append({
-                '分区名称': partition.device,
-                '挂载点': partition.mountpoint,
-                '总大小': f"{usage.total / (1024 ** 3):.2f} GB",
-                '已用大小': f"{usage.used / (1024 ** 3):.2f} GB",
-                '使用率': f"{usage.percent}%"
-            })
-        except Exception:
-            # 静默跳过无法访问的分区
-            continue
 
+def get_disk_info():
+    """使用 WMI 获取硬盘信息和分区信息"""
+    disk_info = {}
+
+    try:
+        import wmi
+        c = wmi.WMI()
+
+        # 调试：检查 WMI 是否正常运行
+        print("WMI 连接成功，开始查询硬盘信息...")
+
+        # 获取硬盘信息
+        disk_details = []
+        for disk in c.Win32_DiskDrive():
+            try:
+                # 跳过 Size 为 None 的硬盘
+                if disk.Size is None:
+                    print(f"跳过无效硬盘: {disk.Model}, 大小: {disk.Size}, 序列号: {disk.SerialNumber}")
+                    continue
+
+                disk_details.append({
+                    '硬盘厂商': disk.Model or "未知",
+                    '硬盘大小': f"{int(disk.Size) / (1024 ** 3):.2f} GB",
+                    '硬盘序列号': disk.SerialNumber.strip() if disk.SerialNumber else "未知"
+                })
+                print(f"查询到硬盘: {disk.Model}, 大小: {disk.Size}, 序列号: {disk.SerialNumber}")  # 调试输出
+            except Exception as e:
+                print(f"处理硬盘信息时出错: {e}")
+                continue
+
+        disk_info['硬盘信息'] = disk_details
+
+        # 获取分区信息（使用 psutil）
+        disk_info['分区信息'] = []
+        for partition in psutil.disk_partitions():
+            try:
+                usage = psutil.disk_usage(partition.mountpoint)
+                disk_info['分区信息'].append({
+                    '分区名称': partition.device,
+                    '挂载点': partition.mountpoint,
+                    '总大小': f"{usage.total / (1024 ** 3):.2f} GB",
+                    '已用大小': f"{usage.used / (1024 ** 3):.2f} GB",
+                    '使用率': f"{usage.percent}%",
+                })
+            except Exception as e:
+                print(f"无法访问分区 {partition.mountpoint}: {e}")
+                continue
+
+    except Exception as e:
+        print(f"获取硬盘信息时出错: {e}")
+        disk_info['硬盘信息'] = []
+        disk_info['分区信息'] = []
+
+    # 调试：输出最终结果
+    print("硬盘信息查询结果:", disk_info)
     return disk_info
 
 def get_memory_info():
@@ -115,7 +164,8 @@ def get_memory_info():
     }
 
     try:
-        memory_slots = run_command_silently(["wmic", "memorychip", "get", "Capacity,Manufacturer,PartNumber"]).decode('utf-8', errors='ignore')
+        memory_slots = run_command_silently(["wmic", "memorychip", "get", "Capacity,Manufacturer,PartNumber"]).decode(
+            'utf-8', errors='ignore')
         memory_slots = memory_slots.strip().splitlines()
         memory_info['内存条信息'] = [
             f"{int(slot.split()[0]) / (1024 ** 3):.2f} GB ({slot.split()[1]} - {slot.split()[2]})"
@@ -141,7 +191,23 @@ def query_and_display():
 
         for section, data in info.items():
             text_box.insert(tk.END, f"{section}:\n")
-            if isinstance(data, dict):
+            if section == "硬盘分区信息":
+                # 显示硬盘信息
+                if '硬盘信息' in data and data['硬盘信息']:
+                    text_box.insert(tk.END, "硬盘信息:\n")
+                    for i, disk in enumerate(data['硬盘信息']):
+                        text_box.insert(tk.END, f"硬盘 {i + 1}: {disk['硬盘厂商']}, {disk['硬盘大小']}, 序列号: {disk['硬盘序列号']}\n")
+                # 显示分区信息
+                if '分区信息' in data and data['分区信息']:
+                    text_box.insert(tk.END, "分区信息:\n")
+                    for partition in data['分区信息']:
+                        text_box.insert(tk.END, f"分区名称: {partition['分区名称']}\n")
+                        text_box.insert(tk.END, f"挂载点: {partition['挂载点']}\n")
+                        text_box.insert(tk.END, f"总大小: {partition['总大小']}\n")
+                        text_box.insert(tk.END, f"已用大小: {partition['已用大小']}\n")
+                        text_box.insert(tk.END, f"使用率: {partition['使用率']}\n")
+                        text_box.insert(tk.END, "\n")
+            elif isinstance(data, dict):
                 for key, value in data.items():
                     if key == '内存条信息' and isinstance(value, list):
                         text_box.insert(tk.END, f"{key}:\n")
@@ -157,7 +223,7 @@ def query_and_display():
             text_box.insert(tk.END, "=" * 60 + "\n")
 
         # 检查是否需要管理员权限
-        if not is_admin() and ("无法获取内存条信息" in str(info["内存信息"])):
+        if not is_admin() and ("未知" in str(info["硬盘分区信息"]) or "无法获取内存条信息" in str(info["内存信息"])):
             admin_button.grid()  # 显示管理员权限按钮
             messagebox.showwarning("提示", "部分信息需要管理员权限才能获取，请点击按钮以获取权限。")
         else:
@@ -175,9 +241,9 @@ def copy_to_clipboard():
 def show_about():
     """显示关于信息"""
     about_message = (
-        "Oneclickinfo v1.0\n\n"
+        "Oneclickinfo v1.0.1\n\n"
         "理论上可运行于 Win7-Win11 64位或32位版本的 Windows 上。\n"
-        "如遇使用问题，请联系qq:915889513@qq.com"
+        "如遇使用问题，请联系湛江市分行：0759-3188662"
     )
     messagebox.showinfo("关于", about_message)
 
